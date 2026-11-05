@@ -75,7 +75,8 @@ th{background:var(--bd)}td.n{text-align:right;white-space:nowrap}
     <label>Loại</label>
     <select id="fType"><option value="thu">Thu</option><option value="chi">Chi</option></select>
     <label>Số tiền (đồng)</label>
-    <input id="fAmt" inputmode="numeric" placeholder="200000">
+    <input id="fAmt" inputmode="numeric" placeholder="200.000" oninput="fmtAmt()" style="font-size:26px;font-weight:700;margin-bottom:2px">
+    <div id="fAmtWords" style="font-size:19px;color:var(--ac);font-weight:600;min-height:28px;margin-bottom:10px"></div>
     <label>Khoản quỹ</label>
     <select id="fFund"></select>
     <label>Hộ dân (nếu có)</label>
@@ -180,6 +181,31 @@ function pDate(t){
   else if(/hôm nay/.test(t)){r.t=t.replace("hôm nay"," ")}
   return r;
 }
+function vnWords(n){
+  if(!n)return "";
+  var D=["không","một","hai","ba","bốn","năm","sáu","bảy","tám","chín"],U=["","nghìn","triệu","tỷ","nghìn tỷ","triệu tỷ"];
+  function three(x,full){
+    var h=Math.floor(x/100),t=Math.floor(x%100/10),u=x%10,s=[];
+    if(h||full)s.push(D[h],"trăm");
+    if(t>1){s.push(D[t],"mươi");if(u==1)s.push("mốt");else if(u==4)s.push("tư");else if(u==5)s.push("lăm");else if(u)s.push(D[u])}
+    else if(t==1){s.push("mười");if(u==5)s.push("lăm");else if(u)s.push(D[u])}
+    else if(u){if(h||full)s.push("lẻ");s.push(D[u])}
+    return s.join(" ");
+  }
+  var gs=[],x=n,out=[],i;
+  while(x>0){gs.push(x%1000);x=Math.floor(x/1000)}
+  for(i=gs.length-1;i>=0;i--){
+    if(!gs[i])continue;
+    out.push(three(gs[i],i<gs.length-1)+(U[i]?" "+U[i]:""));
+  }
+  var r=out.join(" ")+" đồng";
+  return r.charAt(0).toUpperCase()+r.slice(1);
+}
+function fmtAmt(){
+  var d=$("fAmt").value.replace(/\D/g,"").replace(/^0+/,"").slice(0,15);
+  $("fAmt").value=d.replace(/\B(?=(\d{3})+(?!\d))/g,".");
+  $("fAmtWords").textContent=d?vnWords(parseInt(d,10)):"";
+}
 function viD(s){var a=s.split("-");return "ngày "+(+a[2])+" tháng "+(+a[1])+" năm "+a[0]}
 function viFD(){$("fDateVi").textContent=$("fDate").value?"Ghi vào "+viD($("fDate").value):""}
 function parse(t){
@@ -213,7 +239,7 @@ function edit(id){
 function openForm(type,amt,note,fund,hh,date){
   editId=null;
   fillSel();
-  $("fType").value=type;$("fAmt").value=amt||"";$("fNote").value=note||"";$("fDate").value=date||today();viFD();
+  $("fType").value=type;$("fAmt").value=amt||"";$("fNote").value=note||"";$("fDate").value=date||today();viFD();fmtAmt();
   if(fund)$("fFund").value=fund;$("fHh").value=hh||"";
   $("form").classList.remove("hide");$("form").scrollIntoView({behavior:"smooth"});
 }
