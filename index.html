@@ -134,8 +134,26 @@ th{background:var(--bd)}td.n{text-align:right;white-space:nowrap}
     </div>
     <textarea id="bk" rows="3" placeholder="Dán dữ liệu sao lưu vào đây để khôi phục" style="margin-top:10px"></textarea>
   </div>
+  <div class="card np">
+    <label>🔒 Khóa ứng dụng (mật khẩu / Face ID)</label>
+    <div id="lkSt" style="font-weight:700;margin:4px 0 8px"></div>
+    <input id="pinA" type="password" inputmode="numeric" maxlength="6" placeholder="Mật khẩu mới (4 đến 6 số)">
+    <input id="pinB" type="password" inputmode="numeric" maxlength="6" placeholder="Nhập lại mật khẩu">
+    <button class="bac" style="width:100%;margin-bottom:10px" onclick="setPin()">Lưu mật khẩu</button>
+    <button class="bthu" style="width:100%;margin-bottom:10px" onclick="enableBio()">😀 Bật Face ID / vân tay</button>
+    <button class="sec sm" onclick="offLock()">Tắt khóa</button>
+    <div class="hint" id="lkHint" style="margin:8px 0 0"></div>
+  </div>
 </div>
 
+<div id="lock" class="hide" style="position:fixed;inset:0;z-index:99;background:var(--bg);padding:24px;padding-top:calc(env(safe-area-inset-top,0px) + 60px);text-align:center;overflow:auto">
+  <h1>🔒 Sổ thu chi</h1>
+  <div class="hint" id="lkMsg">Nhập mật khẩu để mở</div>
+  <input id="lkPin" type="password" inputmode="numeric" maxlength="6" placeholder="••••" onkeydown="if(event.key==='Enter')tryPin()" style="text-align:center;font-size:32px;letter-spacing:8px">
+  <button class="bac" style="width:100%;margin-bottom:10px" onclick="tryPin()">Mở khóa</button>
+  <button class="bthu" id="lkBio" style="width:100%;margin-bottom:10px" onclick="tryBio()">😀 Mở bằng Face ID / vân tay</button>
+  <button class="sec sm" onclick="forgot()">Quên mật khẩu?</button>
+</div>
 <script>
 var K="sothuchi_v2",db={funds:["Quỹ vệ sinh","Quỹ an ninh","Quỹ khác"],hh:[],tx:[]};
 try{var raw=localStorage.getItem(K);if(raw)db=JSON.parse(raw)}catch(e){}
@@ -395,13 +413,70 @@ function renderBanner(){
 }
 function restore(){
   try{
-    var d=JSON.parse($("bk").value);
+    var t=$("bk").value,a=t.indexOf("{"),z=t.lastIndexOf("}");
+    var d=JSON.parse(t.slice(a,z+1));
     if(!d.tx||!d.funds||!d.hh)throw 0;
     if(!confirm("Dữ liệu hiện tại sẽ bị thay bằng bản sao lưu. Tiếp tục?"))return;
     db=d;persist();fillSel();renderAll();say("Đã khôi phục.");
   }catch(e){say("Dữ liệu dán vào chưa đúng.")}
 }
 
+var LK="sothuchi_lock",lk=null,hid=0;
+try{lk=JSON.parse(localStorage.getItem(LK)||"null")}catch(e){}
+function saveLk(){try{if(lk)localStorage.setItem(LK,JSON.stringify(lk));else localStorage.removeItem(LK)}catch(e){}}
+function sha(s){return crypto.subtle.digest("SHA-256",new TextEncoder().encode("stc:"+s)).then(function(b){return Array.from(new Uint8Array(b)).map(function(x){return x.toString(16).padStart(2,"0")}).join("")})}
+function b64(b){return btoa(String.fromCharCode.apply(null,new Uint8Array(b)))}
+function unb64(s){return Uint8Array.from(atob(s),function(c){return c.charCodeAt(0)})}
+function say2(m){$("lkHint").textContent=m}
+function lkStatus(){$("lkSt").textContent=lk?"Khóa đang BẬT"+(lk.cred?" · có Face ID / vân tay":""):"Khóa đang TẮT"}
+function lockNow(){
+  if(!lk)return;
+  $("lock").classList.remove("hide");$("lkPin").value="";
+  $("lkBio").style.display=lk.cred?"block":"none";
+  $("lkMsg").textContent="Nhập mật khẩu để mở";document.body.style.overflow="hidden";
+}
+function unlock(){$("lock").classList.add("hide");document.body.style.overflow="";hid=0}
+function tryPin(){
+  sha($("lkPin").value).then(function(h){
+    if(lk&&h===lk.pin)unlock();else{$("lkMsg").textContent="Sai mật khẩu, mẹ thử lại nhé";$("lkPin").value=""}
+  });
+}
+function tryBio(){
+  if(!lk||!lk.cred||!navigator.credentials)return;
+  navigator.credentials.get({publicKey:{challenge:crypto.getRandomValues(new Uint8Array(32)),allowCredentials:[{type:"public-key",id:unb64(lk.cred)}],userVerification:"required",timeout:60000}}).then(unlock,function(){$("lkMsg").textContent="Chưa nhận diện được, mẹ nhập mật khẩu nhé"});
+}
+function setPin(){
+  var a=$("pinA").value,b=$("pinB").value;
+  if(!/^\d{4,6}$/.test(a)){say2("Mật khẩu gồm 4 đến 6 chữ số");return}
+  if(a!==b){say2("Hai lần nhập chưa giống nhau");return}
+  if(!window.crypto||!crypto.subtle){say2("Máy này chưa hỗ trợ khóa ứng dụng");return}
+  var rc=String(Math.floor(100000+Math.random()*900000));
+  Promise.all([sha(a),sha("rc"+rc)]).then(function(h){
+    lk={pin:h[0],rc:h[1],cred:(lk&&lk.cred)||""};saveLk();
+    $("pinA").value="";$("pinB").value="";lkStatus();say2("Đã lưu mật khẩu ✓");
+    alert("MÃ KHÔI PHỤC: "+rc+"\n\nMẹ ghi lại hoặc gửi cho con. Dùng khi quên mật khẩu.");
+  });
+}
+function enableBio(){
+  if(!lk){say2("Mẹ đặt mật khẩu trước nhé");return}
+  if(!window.PublicKeyCredential||!navigator.credentials){say2("Máy này chưa hỗ trợ Face ID / vân tay trong ứng dụng");return}
+  navigator.credentials.create({publicKey:{challenge:crypto.getRandomValues(new Uint8Array(32)),rp:{name:"So thu chi"},user:{id:crypto.getRandomValues(new Uint8Array(16)),name:"me",displayName:"Mẹ"},pubKeyCredParams:[{type:"public-key",alg:-7},{type:"public-key",alg:-257}],authenticatorSelection:{authenticatorAttachment:"platform",userVerification:"required"},timeout:60000}}).then(function(c){
+    lk.cred=b64(c.rawId);saveLk();lkStatus();say2("Đã bật Face ID / vân tay ✓");
+  },function(){say2("Không bật được. Mẹ vẫn dùng mật khẩu bình thường.")});
+}
+function offLock(){if(!lk)return;if(!confirm("Tắt khóa ứng dụng?"))return;lk=null;saveLk();lkStatus();say2("Đã tắt khóa")}
+function forgot(){
+  var c=prompt("Nhập mã khôi phục 6 số (ghi lúc đặt mật khẩu):");
+  if(!c)return;
+  sha("rc"+c.trim()).then(function(h){
+    if(lk&&h===lk.rc){lk=null;saveLk();unlock();lkStatus();alert("Đã tắt khóa. Dữ liệu vẫn còn. Mẹ đặt lại mật khẩu mới trong tab Báo cáo nhé.")}
+    else $("lkMsg").textContent="Mã khôi phục chưa đúng";
+  });
+}
+document.addEventListener("visibilitychange",function(){
+  if(document.hidden)hid=Date.now();
+  else if(lk&&hid&&Date.now()-hid>30000)lockNow();
+});
 function renderAll(){var v=mo().split("-");$("moVi").textContent="Đang xem: Tháng "+(+v[1])+" năm "+v[0];renderSo();renderHH();renderRep();renderBanner()}
 
 var SR=window.SpeechRecognition||window.webkitSpeechRecognition,rec=null;
@@ -423,7 +498,7 @@ $("mic").onclick=function(){
 
 $("month").value=today().slice(0,7);
 $("month").onchange=renderAll;
-fillSel();tab(1);
+fillSel();tab(1);lkStatus();if(lk)lockNow();
 </script>
 </body>
 </html>
