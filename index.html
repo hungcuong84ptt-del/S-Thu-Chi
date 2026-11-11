@@ -118,6 +118,12 @@ th{background:var(--bd)}td.n{text-align:right;white-space:nowrap}
 
 <!-- TAB 3 -->
 <div id="t3" class="hide">
+  <div class="card np">
+    <label>Xem báo cáo theo</label>
+    <select id="repHh" onchange="renderRep()"><option value="">Cả tổ dân phố</option></select>
+    <label>Thời gian (khi chọn từng hộ)</label>
+    <select id="repRange" onchange="renderRep()" style="margin-bottom:0"><option value="month">Tháng đang xem</option><option value="year">Cả năm</option><option value="all">Tất cả</option></select>
+  </div>
   <div class="card"><pre id="repTxt"></pre></div>
   <div class="card" style="overflow-x:auto"><div id="ledger"></div></div>
   <div class="btns np">
@@ -177,6 +183,8 @@ function fillSel(){
   var h='<option value="">— không —</option>';
   db.hh.forEach(function(x){h+='<option>'+esc(x)+'</option>'});
   $("fHh").innerHTML=h;
+  var r=$("repHh"),rv=r.value;
+  r.innerHTML='<option value="">Cả tổ dân phố</option>'+h.replace('<option value="">— không —</option>','');r.value=rv;
 }
 
 var NW={};
@@ -364,7 +372,35 @@ function ledgerHTML(){
   h+='<tr><td></td><td></td><td><b>Cộng / Tồn cuối tháng</b></td><td class="n"><b>'+L.t.toLocaleString("vi-VN")+'</b></td><td class="n"><b>'+L.c.toLocaleString("vi-VN")+'</b></td><td class="n"><b>'+L.close.toLocaleString("vi-VN")+'</b></td></tr></table>';
   return h;
 }
+function hhRows(h){
+  var rg=$("repRange").value,m=mo(),y=m.slice(0,4);
+  return db.tx.filter(function(x){return x.hh===h&&(rg==="all"||(rg==="year"?x.date.slice(0,4)===y:x.date.slice(0,7)===m))}).sort(function(a,b){return a.date.localeCompare(b.date)||a.id-b.id});
+}
+function rangeLabel(){var rg=$("repRange").value,m=mo().split("-");return rg==="all"?"Tất cả thời gian":rg==="year"?"Năm "+m[0]:"Tháng "+m[1]+"/"+m[0]}
+function hhSum(h){
+  var rows=hhRows(h),t=0,c=0,by={};
+  rows.forEach(function(x){var k=x.fund||"Khác";by[k]=by[k]||{t:0,c:0};if(x.type==="thu"){t+=x.amt;by[k].t+=x.amt}else{c+=x.amt;by[k].c+=x.amt}});
+  var miss=db.funds.filter(function(f){return !rows.some(function(x){return x.type==="thu"&&x.fund===f})});
+  return{rows:rows,t:t,c:c,by:by,miss:miss};
+}
+function hhText(h,short){
+  var S=hhSum(h),s="BÁO CÁO THEO HỘ DÂN\nHộ: "+h+"\nThời gian: "+rangeLabel()+"\n\nTổng đã đóng (thu): "+vnd(S.t)+"\n";
+  if(S.c)s+="Tổng chi liên quan: "+vnd(S.c)+"\n";
+  var ks=Object.keys(S.by);
+  if(ks.length){s+="\nTheo khoản quỹ:\n";ks.forEach(function(k){s+="- "+k+": thu "+vnd(S.by[k].t)+(S.by[k].c?", chi "+vnd(S.by[k].c):"")+"\n"})}
+  if(!short&&S.rows.length){s+="\nChi tiết:\n";S.rows.forEach(function(x,i){s+=(i+1)+". "+ddmm(x.date)+" | "+(x.fund||"Khác")+" | "+(x.note||"")+" | "+(x.type==="thu"?"Thu ":"Chi ")+vnd(x.amt)+"\n"})}
+  s+="\nChưa có khoản thu: "+(S.miss.length?S.miss.join(", "):"không có, đã đóng đủ các khoản quỹ")+"\n";
+  return s;
+}
+function hhHTML(h){
+  var S=hhSum(h),o='<b>HỘ DÂN: '+esc(h)+'</b> <small>('+rangeLabel()+', đơn vị: đồng)</small><table><tr><th>STT</th><th>Ngày tháng năm</th><th>Khoản quỹ</th><th>Diễn giải</th><th>Thu</th><th>Chi</th></tr>';
+  S.rows.forEach(function(x,i){o+='<tr><td>'+(i+1)+'</td><td>'+ddmm(x.date)+'</td><td>'+esc(x.fund||"Khác")+'</td><td>'+esc(x.note||"")+'</td><td class="n">'+num(x.type==="thu"?x.amt:0)+'</td><td class="n">'+num(x.type==="chi"?x.amt:0)+'</td></tr>'});
+  if(!S.rows.length)o+='<tr><td colspan="6">Chưa có khoản nào</td></tr>';
+  o+='<tr><td></td><td></td><td></td><td><b>Cộng</b></td><td class="n"><b>'+S.t.toLocaleString("vi-VN")+'</b></td><td class="n"><b>'+S.c.toLocaleString("vi-VN")+'</b></td></tr></table>';
+  return o;
+}
 function report(short){
+  if($("repHh").value)return hhText($("repHh").value,short);
   var rows=monthTx(),t=0,c=0,by={},f=$("fv").value,m=mo().split("-");
   rows.forEach(function(x){
     var k=x.fund||"Khác";by[k]=by[k]||{t:0,c:0};
@@ -387,7 +423,7 @@ function report(short){
   }
   return s;
 }
-function renderRep(){$("repTxt").textContent=report(true);$("ledger").innerHTML=ledgerHTML()}
+function renderRep(){var h=$("repHh").value;$("repTxt").textContent=report(true);$("ledger").innerHTML=h?hhHTML(h):ledgerHTML()}
 function say(m){$("repHint").textContent=m}
 function copyText(s,ok){
   function fb(){var a=document.createElement("textarea");a.value=s;document.body.appendChild(a);a.select();try{document.execCommand("copy");say(ok)}catch(e){say("Không sao chép được, mẹ nhấn giữ vào chữ để chọn nhé.")}document.body.removeChild(a)}
