@@ -121,6 +121,8 @@ th{background:var(--bd)}td.n{text-align:right;white-space:nowrap}
   <div class="card np">
     <label>Xem báo cáo theo</label>
     <select id="repHh" onchange="renderRep()"><option value="">Cả tổ dân phố</option></select>
+    <label>Theo khoản quỹ</label>
+    <select id="repFund" onchange="renderRep()"><option value="">Tất cả các quỹ</option></select>
     <label>Thời gian báo cáo</label>
     <select id="repRange" onchange="rangeChg()" style="margin-bottom:0"><option value="month">Tháng đang xem</option><option value="year">Cả năm</option><option value="all">Tất cả</option><option value="custom">Từ ngày … đến ngày …</option></select>
     <div id="repDates" class="hide" style="margin-top:10px">
@@ -191,6 +193,7 @@ function fillSel(){
   $("fHh").innerHTML=h;
   var r=$("repHh"),rv=r.value;
   r.innerHTML='<option value="">Cả tổ dân phố</option>'+h.replace('<option value="">— không —</option>','');r.value=rv;
+  var rf=$("repFund"),rfv=rf.value;rf.innerHTML='<option value="">Tất cả các quỹ</option>'+o;rf.value=rfv;
 }
 
 var NW={};
@@ -359,9 +362,9 @@ function addFund(){
 function dg(x,skip){return (x.hh&&!skip?x.hh+": ":"")+(x.note||(x.type==="thu"?"Thu":"Chi"))+(x.fund?" ["+x.fund+"]":"")}
 function ledger(hn){
   var R=getRange(),open=0,rows=[],t=0,c=0,b;
-  db.tx.forEach(function(x){if((!hn||x.hh===hn)&&R.from&&x.date<R.from)open+=x.type==="thu"?x.amt:-x.amt});
+  db.tx.forEach(function(x){if((!hn||x.hh===hn)&&fundOk(x)&&R.from&&x.date<R.from)open+=x.type==="thu"?x.amt:-x.amt});
   b=open;
-  rangeTx().filter(function(x){return !hn||x.hh===hn}).reverse().forEach(function(x,i){
+  rangeTx().filter(function(x){return (!hn||x.hh===hn)&&fundOk(x)}).reverse().forEach(function(x,i){
     var th=x.type==="thu"?x.amt:0,ch=x.type==="chi"?x.amt:0;
     t+=th;c+=ch;b+=th-ch;
     rows.push({stt:i+1,date:ddmm(x.date),dg:dg(x,hn),thu:th,chi:ch,ton:b});
@@ -370,7 +373,7 @@ function ledger(hn){
 }
 function num(n){return n?n.toLocaleString("vi-VN"):""}
 function ledgerHTML(hn){
-  var L=ledger(hn),h='<b>'+(hn?'HỘ DÂN: '+esc(hn):'SỔ QUỸ TIỀN MẶT')+'</b> <small>('+rangeLabel()+', đơn vị: đồng)</small><table><tr><th>STT</th><th>Ngày tháng năm</th><th>Diễn giải</th><th>Thu</th><th>Chi</th><th>Tồn</th></tr>';
+  var L=ledger(hn),h='<b>'+(hn?'HỘ DÂN: '+esc(hn):'SỔ QUỸ TIỀN MẶT')+($("repFund").value?' · '+esc($("repFund").value):'')+'</b> <small>('+rangeLabel()+', đơn vị: đồng)</small><table><tr><th>STT</th><th>Ngày tháng năm</th><th>Diễn giải</th><th>Thu</th><th>Chi</th><th>Tồn</th></tr>';
   h+='<tr><td></td><td></td><td><i>Tồn đầu kỳ</i></td><td></td><td></td><td class="n">'+L.open.toLocaleString("vi-VN")+'</td></tr>';
   L.rows.forEach(function(r){
     h+='<tr><td>'+r.stt+'</td><td>'+r.date+'</td><td>'+esc(r.dg)+'</td><td class="n">'+num(r.thu)+'</td><td class="n">'+num(r.chi)+'</td><td class="n">'+r.ton.toLocaleString("vi-VN")+'</td></tr>';
@@ -378,6 +381,9 @@ function ledgerHTML(hn){
   h+='<tr><td></td><td></td><td><b>Cộng / Tồn cuối kỳ</b></td><td class="n"><b>'+L.t.toLocaleString("vi-VN")+'</b></td><td class="n"><b>'+L.c.toLocaleString("vi-VN")+'</b></td><td class="n"><b>'+L.close.toLocaleString("vi-VN")+'</b></td></tr></table>';
   return h;
 }
+function fundOk(x){var f=$("repFund").value;return !f||x.fund===f}
+function fundLine(){var f=$("repFund").value;return f?"Khoản quỹ: "+f+"\n":""}
+function paidR(h,f){var R=getRange(),s=0;db.tx.forEach(function(x){if(x.type==="thu"&&x.hh===h&&x.fund===f&&inR(x,R))s+=x.amt});return s}
 function getRange(){
   var rg=$("repRange").value,m=mo(),y=m.slice(0,4),f,t;
   if(rg==="custom"){f=$("repFrom").value;t=$("repTo").value;if(f&&t&&f>t){var w=f;f=t;t=w}return{from:f,to:t}}
@@ -394,7 +400,7 @@ function rangeChg(){
 }
 function hhRows(h){
   var R=getRange();
-  return db.tx.filter(function(x){return x.hh===h&&inR(x,R)}).sort(function(a,b){return a.date.localeCompare(b.date)||a.id-b.id});
+  return db.tx.filter(function(x){return x.hh===h&&fundOk(x)&&inR(x,R)}).sort(function(a,b){return a.date.localeCompare(b.date)||a.id-b.id});
 }
 function rangeLabel(){
   var rg=$("repRange").value,m=mo().split("-"),R=getRange();
@@ -404,13 +410,13 @@ function rangeLabel(){
 function hhSum(h){
   var rows=hhRows(h),t=0,c=0,by={};
   rows.forEach(function(x){var k=x.fund||"Khác";by[k]=by[k]||{t:0,c:0};if(x.type==="thu"){t+=x.amt;by[k].t+=x.amt}else{c+=x.amt;by[k].c+=x.amt}});
-  var miss=db.funds.filter(function(f){return !rows.some(function(x){return x.type==="thu"&&x.fund===f})});
+  var miss=db.funds.filter(function(f){return (!$("repFund").value||f===$("repFund").value)&&!rows.some(function(x){return x.type==="thu"&&x.fund===f})});
   return{rows:rows,t:t,c:c,by:by,miss:miss};
 }
 function hhText(h,short){
   var S=hhSum(h),all=0,s;
-  db.tx.forEach(function(x){if(x.hh===h)all+=x.type==="thu"?x.amt:-x.amt});
-  s="BÁO CÁO THU CHI TỔ DÂN PHỐ\nTheo hộ dân: "+h+"\nThời gian: "+rangeLabel()+"\n\n";
+  db.tx.forEach(function(x){if(x.hh===h&&fundOk(x))all+=x.type==="thu"?x.amt:-x.amt});
+  s="BÁO CÁO THU CHI TỔ DÂN PHỐ\nTheo hộ dân: "+h+"\n"+fundLine()+"Thời gian: "+rangeLabel()+"\n\n";
   s+="Tổng thu: "+vnd(S.t)+"\nTổng chi: "+vnd(S.c)+"\nChênh lệch: "+vnd(S.t-S.c)+"\nTồn của hộ (lũy kế): "+vnd(all)+"\n";
   var ks=Object.keys(S.by);
   if(ks.length){s+="\nTheo khoản quỹ:\n";ks.forEach(function(k){s+="- "+k+": thu "+vnd(S.by[k].t)+", chi "+vnd(S.by[k].c)+"\n"})}
@@ -441,13 +447,13 @@ function hhHTML(h){
 }
 function report(short){
   if($("repHh").value)return hhText($("repHh").value,short);
-  var rows=rangeTx(),t=0,c=0,by={},f=$("fv").value;
+  var rows=rangeTx().filter(fundOk),t=0,c=0,by={},f=$("repFund").value||$("fv").value;
   rows.forEach(function(x){
     var k=x.fund||"Khác";by[k]=by[k]||{t:0,c:0};
     if(x.type==="thu"){t+=x.amt;by[k].t+=x.amt}else{c+=x.amt;by[k].c+=x.amt}
   });
-  var all=0;db.tx.forEach(function(x){all+=x.type==="thu"?x.amt:-x.amt});
-  var s="BÁO CÁO THU CHI TỔ DÂN PHỐ\nThời gian: "+rangeLabel()+"\n\n";
+  var all=0;db.tx.forEach(function(x){if(fundOk(x))all+=x.type==="thu"?x.amt:-x.amt});
+  var s="BÁO CÁO THU CHI TỔ DÂN PHỐ\n"+fundLine()+"Thời gian: "+rangeLabel()+"\n\n";
   s+="Tổng thu: "+vnd(t)+"\nTổng chi: "+vnd(c)+"\nChênh lệch: "+vnd(t-c)+"\nQuỹ còn lại: "+vnd(all)+"\n";
   var ks=Object.keys(by);
   if(ks.length){s+="\nTheo khoản quỹ:\n";ks.forEach(function(k){s+="- "+k+": thu "+vnd(by[k].t)+", chi "+vnd(by[k].c)+"\n"})}
@@ -458,7 +464,7 @@ function report(short){
     s+="Tồn cuối kỳ: "+vnd(L.close)+"\n";
   }
   if(db.hh.length&&f){
-    var no=db.hh.filter(function(h){return !paid(h,f)});
+    var no=db.hh.filter(function(h){return !paidR(h,f)});
     s+="\n"+f+" - chưa đóng ("+no.length+"/"+db.hh.length+" hộ):\n"+(no.length?no.join(", "):"Tất cả đã đóng")+"\n";
   }
   return s;
