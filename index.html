@@ -356,21 +356,21 @@ function addFund(){
   $("fundNew").value="";persist();fillSel();renderHH();
 }
 
-function dg(x){return (x.hh?x.hh+": ":"")+(x.note||(x.type==="thu"?"Thu":"Chi"))+(x.fund?" ["+x.fund+"]":"")}
-function ledger(){
+function dg(x,skip){return (x.hh&&!skip?x.hh+": ":"")+(x.note||(x.type==="thu"?"Thu":"Chi"))+(x.fund?" ["+x.fund+"]":"")}
+function ledger(hn){
   var R=getRange(),open=0,rows=[],t=0,c=0,b;
-  db.tx.forEach(function(x){if(R.from&&x.date<R.from)open+=x.type==="thu"?x.amt:-x.amt});
+  db.tx.forEach(function(x){if((!hn||x.hh===hn)&&R.from&&x.date<R.from)open+=x.type==="thu"?x.amt:-x.amt});
   b=open;
-  rangeTx().slice().reverse().forEach(function(x,i){
+  rangeTx().filter(function(x){return !hn||x.hh===hn}).reverse().forEach(function(x,i){
     var th=x.type==="thu"?x.amt:0,ch=x.type==="chi"?x.amt:0;
     t+=th;c+=ch;b+=th-ch;
-    rows.push({stt:i+1,date:ddmm(x.date),dg:dg(x),thu:th,chi:ch,ton:b});
+    rows.push({stt:i+1,date:ddmm(x.date),dg:dg(x,hn),thu:th,chi:ch,ton:b});
   });
   return{open:open,rows:rows,t:t,c:c,close:b};
 }
 function num(n){return n?n.toLocaleString("vi-VN"):""}
-function ledgerHTML(){
-  var L=ledger(),h='<b>SỔ QUỸ TIỀN MẶT</b> <small>('+rangeLabel()+', đơn vị: đồng)</small><table><tr><th>STT</th><th>Ngày tháng năm</th><th>Diễn giải</th><th>Thu</th><th>Chi</th><th>Tồn</th></tr>';
+function ledgerHTML(hn){
+  var L=ledger(hn),h='<b>'+(hn?'HỘ DÂN: '+esc(hn):'SỔ QUỸ TIỀN MẶT')+'</b> <small>('+rangeLabel()+', đơn vị: đồng)</small><table><tr><th>STT</th><th>Ngày tháng năm</th><th>Diễn giải</th><th>Thu</th><th>Chi</th><th>Tồn</th></tr>';
   h+='<tr><td></td><td></td><td><i>Tồn đầu kỳ</i></td><td></td><td></td><td class="n">'+L.open.toLocaleString("vi-VN")+'</td></tr>';
   L.rows.forEach(function(r){
     h+='<tr><td>'+r.stt+'</td><td>'+r.date+'</td><td>'+esc(r.dg)+'</td><td class="n">'+num(r.thu)+'</td><td class="n">'+num(r.chi)+'</td><td class="n">'+r.ton.toLocaleString("vi-VN")+'</td></tr>';
@@ -408,6 +408,22 @@ function hhSum(h){
   return{rows:rows,t:t,c:c,by:by,miss:miss};
 }
 function hhText(h,short){
+  var S=hhSum(h),all=0,s;
+  db.tx.forEach(function(x){if(x.hh===h)all+=x.type==="thu"?x.amt:-x.amt});
+  s="BÁO CÁO THU CHI TỔ DÂN PHỐ\nTheo hộ dân: "+h+"\nThời gian: "+rangeLabel()+"\n\n";
+  s+="Tổng thu: "+vnd(S.t)+"\nTổng chi: "+vnd(S.c)+"\nChênh lệch: "+vnd(S.t-S.c)+"\nTồn của hộ (lũy kế): "+vnd(all)+"\n";
+  var ks=Object.keys(S.by);
+  if(ks.length){s+="\nTheo khoản quỹ:\n";ks.forEach(function(k){s+="- "+k+": thu "+vnd(S.by[k].t)+", chi "+vnd(S.by[k].c)+"\n"})}
+  if(!short){
+    var L=ledger(h);
+    s+="\nSỔ QUỸ TIỀN MẶT\nTồn đầu kỳ: "+vnd(L.open)+"\n";
+    L.rows.forEach(function(r){s+=r.stt+". "+r.date+" | "+r.dg+" | "+(r.thu?"Thu "+vnd(r.thu):"Chi "+vnd(r.chi))+" | Tồn "+vnd(r.ton)+"\n"});
+    s+="Tồn cuối kỳ: "+vnd(L.close)+"\n";
+  }
+  s+="\nChưa có khoản thu: "+(S.miss.length?S.miss.join(", "):"không có, đã đóng đủ các khoản quỹ")+"\n";
+  return s;
+}
+function hhTextOld(h,short){
   var S=hhSum(h),s="BÁO CÁO THEO HỘ DÂN\nHộ: "+h+"\nThời gian: "+rangeLabel()+"\n\nTổng đã đóng (thu): "+vnd(S.t)+"\n";
   if(S.c)s+="Tổng chi liên quan: "+vnd(S.c)+"\n";
   var ks=Object.keys(S.by);
@@ -447,7 +463,7 @@ function report(short){
   }
   return s;
 }
-function renderRep(){var h=$("repHh").value;$("repTxt").textContent=report(true);$("ledger").innerHTML=h?hhHTML(h):ledgerHTML()}
+function renderRep(){var h=$("repHh").value;$("repTxt").textContent=report(true);$("ledger").innerHTML=ledgerHTML(h)}
 function say(m){$("repHint").textContent=m}
 function copyText(s,ok){
   function fb(){var a=document.createElement("textarea");a.value=s;document.body.appendChild(a);a.select();try{document.execCommand("copy");say(ok)}catch(e){say("Không sao chép được, mẹ nhấn giữ vào chữ để chọn nhé.")}document.body.removeChild(a)}
